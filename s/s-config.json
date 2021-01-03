@@ -1,0 +1,6 @@
+{
+"cmdPort":"8080"
+"dataPort":"8081"
+"webPort":"8082"
+"password":"helloworld"
+}
