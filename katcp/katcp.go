@@ -44,7 +44,7 @@ type KaConn struct {
 	buf          chan byte     //保存心跳检测误读的业务数据，心跳检测只读四个字节
 	echoBuf      chan byte
 	cmdListenner *net.TCPListener //用于维护tcp连接的有效性，如果发现连接断开了，重新接收一个连接呼入
-	serverAddr   *net.TCPAddr
+	serverStr    string
 	sync.Mutex
 }
 type KaConns struct {
@@ -62,7 +62,7 @@ func init() {
 		HB.ReplyData[i] = 0x01 //心跳回复包，四个1
 	}
 }
-func GetKaConn(conn *net.TCPConn, cmdListenner *net.TCPListener) *KaConn {
+func GetKaConnC(conn *net.TCPConn, serverStr string) *KaConn {
 	//init()
 	kac := &KaConn{}
 	kac.TCPConn = conn
@@ -72,14 +72,28 @@ func GetKaConn(conn *net.TCPConn, cmdListenner *net.TCPListener) *KaConn {
 	kac.replyData = HB.ReplyData
 	kac.buf = make(chan byte, 1024) //误读缓冲区，就是读心跳数据的协程可能会误读到业务数据，如果发现误读了业务数据，把误读的数据放入这个缓冲区，供Read函数读取
 	kac.echoBuf = make(chan byte, HBLEGHT)
-	addrStr := conn.RemoteAddr().String()
-	if cmdListenner != nil {
-		kac.cmdListenner = cmdListenner
-	}
-	kac.serverAddr, _ = net.ResolveTCPAddr("tcp4", addrStr)
+	kac.serverStr=serverStr
 	kac.lastEchoTime = time.Now()
 	return kac
 }
+func GetKaConnS(conn *net.TCPConn, cmdListenner *net.TCPListener) *KaConn {
+	//init()
+	kac := &KaConn{}
+	kac.TCPConn = conn
+	kac.echoInterval = HB.EchoInterval
+	kac.connTimeOut = HB.ConnTimeOut
+	kac.echoData = HB.EchoData
+	kac.replyData = HB.ReplyData
+	kac.buf = make(chan byte, 1024) //误读缓冲区，就是读心跳数据的协程可能会误读到业务数据，如果发现误读了业务数据，把误读的数据放入这个缓冲区，供Read函数读取
+	kac.echoBuf = make(chan byte, HBLEGHT)
+	if cmdListenner != nil {
+		kac.cmdListenner = cmdListenner
+	}
+	kac.lastEchoTime = time.Now()
+	return kac
+}
+
+
 func (kac *KaConn) reGetTcpConn() bool {
 	fmt.Println("kac.reGetTcpConn: 加锁前")
 	kac.Lock()
@@ -103,10 +117,13 @@ func (kac *KaConn) reDailTcpConn() bool {
 	kac.Lock()
 	defer kac.Unlock()
 	if kac.TCPConn == nil {
-		tcpClient, err := net.DialTCP("tcp", nil, kac.serverAddr)
+		serverAddr,err:=net.ResolveTCPAddr("tcp4", kac.serverStr)
+		fmt.Println("kac.serverStr:",kac.serverStr,err)
+		tcpClient, err := net.DialTCP("tcp", nil, serverAddr)
 		for err != nil {
 
-			tcpClient, err = net.DialTCP("tcp", nil, kac.serverAddr)
+			serverAddr,err =net.ResolveTCPAddr("tcp4", kac.serverStr)
+			tcpClient, err = net.DialTCP("tcp", nil, serverAddr)
 			time.Sleep(kac.echoInterval)
 			fmt.Println("正在重新拨号...", err)
 		}
