@@ -106,6 +106,10 @@ func (ps *ProxyServer) startDail() {
 	for range tk.C {
 		if ps.cmdConn == nil {
 			fmt.Println("拨号到服务器:", address, "...第 ", i, " 次")
+			tcpaddr, err = net.ResolveTCPAddr("tcp4", address)
+			if err != nil {
+				log.Println("tcp命令地址错误", address, err)
+			}
 
 			serverCmdConn, err := net.DialTCP("tcp", nil, tcpaddr)
 			i++
@@ -113,14 +117,15 @@ func (ps *ProxyServer) startDail() {
 				log.Println("拨号服务器命令端口失败", err)
 				continue
 			}
-			ps.cmdConn = katcp.GetKaConn(serverCmdConn, nil)
+			ps.cmdConn = katcp.GetKaConnC(serverCmdConn, address)
+			fmt.Println("address:", address)
 			go ps.cmdConn.StartEchoClient()
 
 			fmt.Println("已连接到服务器。")
 			break
 		}
 	}
-
+	//拨号成功后进入读命令循环，如果读命令错误退出循环，依赖上层调用函数的循环重新拨号命令通道
 	for {
 		//clearBytesSlice(cmdBuf)
 
@@ -265,8 +270,8 @@ func (c *Rc4) encryptCopy(dst *net.TCPConn, src *net.TCPConn) {
 	n := 0
 	for n, err = src.Read(buf); err == nil && n > 0; n, err = src.Read(buf) {
 		//5秒无数据传输就断掉连接
-		dst.SetDeadline(time.Now().Add(time.Second * 5))
-		src.SetDeadline(time.Now().Add(time.Second * 5))
+		dst.SetDeadline(time.Now().Add(time.Second * 10))
+		src.SetDeadline(time.Now().Add(time.Second * 10))
 		c.C.XORKeyStream(buf[:n], buf[:n])
 
 		dst.Write(buf[:n])
